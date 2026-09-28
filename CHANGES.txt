@@ -1,0 +1,42 @@
+CONTROL SYSTEM - APPLIED FIXES
+==============================
+Build: -Os, F_CPU = 8 MHz, ATmega32. Compiles with ZERO warnings (-Wall -Wextra).
+
+CRITICAL
+ 1. HAL/ENCODER/ENCODER_config.h   Phase B was moved to PC0 = motor DIR1 -> ENCODER_voidInit()
+                                   turned the motor direction pin into an input. Phase B is back
+                                   on PC2 (as wired in main.c). Pin map is documented in the file.
+ 2. MCAL/UART/UART_program.c       Baud was hard-coded for 16 MHz (UBRR=103). Now computed from
+    MCAL/UART/UART_config.h (new)  F_CPU: 8 MHz -> UBRR 51 -> exactly 9600 baud (ESP32 unchanged).
+ 3. MCAL/I2C_SW/I2C_SW_program.c   Start() never generated a (repeated) START -> MPU6050 read
+                                   returned X=-1,Y=-1,Z=-1. Rewritten; open-drain lines
+                                   (no 5 V push into the 3.3 V sensor, no bus contention).
+    MCAL/I2C_SW/I2C_SW_config.h    New option I2C_SW_u8_OPEN_DRAIN (1 = default, 0 = push-pull).
+ 4. APP/main.c                     JTAG disabled at start-up (MCUCSR.JTD): PC2 (encoder B),
+                                   PC3 (SCL), PC4 (SDA) are JTAG pins on the ATmega32.
+ 5. HAL/ULTRASONIC/*               Distance now measured with hardware Timer0 (the old software
+                                   loop divided by an uncalibrated 900 and always gave 0 cm, so the
+                                   emergency stop never fired). Bounded timeouts (30 ms).
+ 6. .cproject + Debug/*/subdir.mk  Debug configuration: -O0 -> -Os (util/delay.h needs optimisation).
+
+SMALLER
+ 7. MCAL/EXTI/EXTI_program.c       Removed duplicate NULL definition (warning).
+ 8. HAL/MPU6050/*                  100 ms power-up delay, retry on NACK, zeros (not garbage) if the
+                                   sensor does not answer, safe s16 byte combining.
+ 9. HAL/SENSORS/*                  Temperature clamped (no undefined negative->u8 cast); error is now
+                                   255 (SENSORS_u8_TEMP_ERROR) instead of 0; NTC wiring documented.
+10. LIB/CLOCK.h (new)              One F_CPU fallback (8 MHz) used by every file (before: 8 MHz in
+                                   main.c but 16 MHz in ultrasonic / I2C).
+11. MCAL/ADC/ADC_program.c         Comment corrected (62.5 kHz ADC clock at 8 MHz).
+12. APP/main.c                     Boot message "ATmega32 control system started" over UART, so you
+                                   can see the link work on the dashboard immediately.
+
+ALREADY FIXED IN YOUR UPLOAD (kept as is): ENCODER_interface.h, atomic pulse counter, RPM function.
+
+STILL TO CHECK ON THE HARDWARE (cannot be fixed in code)
+ - Fuses: the ATmega32 default is the 1 MHz internal RC. Set the clock fuses for 8 MHz internal
+   (CKSEL=0100) or use an 8 MHz crystal, otherwise every timing (UART, PWM) is 8x too slow.
+ - ESP32 RX (GPIO16) must not see 5 V directly: use a level shifter or a 1k/2k divider.
+ - Common GND between ATmega, ESP32, motor driver and sensors.
+ - Motor driver: ENA jumper removed and wired to PD5, motor supply present.
+ - GY-521 (MPU6050) board must have its I2C pull-up resistors (standard boards do).
